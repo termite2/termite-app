@@ -6,14 +6,15 @@ endif
 
 include ${COMMON}/Makefile.inc
 
-GHCINC=${TSL2_PATH} \
-LIBS=
-LIBPATHS= ${TSL2_PATH}
+GHCINC= ${BDD_PATH} ${ABSTRACT2_PATH} ${TSL2_PATH} ${TSL2_PATH}/frontend ${TSL2_PATH}/internal ${TSL2_PATH}/abstract ${BDD_PATH} ${UTIL_PATH} ${ABSTRACT_PATH} ${TSL_PATH} ${CUDD_HASKELL_PATH}
+LIBS=${CUDDLIBS} ${CUDDHLIB} 
+LIBPATHS= ${CUDDLIBPATHS} \
+	 ${CUDD_HASKELL_PATH}
 TARGET=tsl2.hs
 CLIBS=${LIBS} stdc++
-GHC_FLAGS+=-o $(ROOT)/bin/tsl2 #-prof -auto-all -rtsopts # -fforce-recomp 
+GHC_FLAGS+=-o $(ROOT)/bin/tsl2 -prof -auto-all -rtsopts # -fforce-recomp 
 
-CABAL_PACKAGES= ${TSL2_PATH}
+CABAL_PACKAGES= 
 
 EXTRA_LIB_DIRS=
 

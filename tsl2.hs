@@ -61,7 +61,7 @@ main = do
     let ispec = spec2Internal spec'
     writeFile "output3.tsl" $ P.render $ pp ispec
     let game = tslAbsGame ispec
-    let result = runST $ doEverything game newPDBPriv 
+    let result = runST $ doEverything game newPDBPriv (eqSolver ispec)
     putStrLn $ "result: " ++ show result
 
 mkSpec :: [SpecItem] -> Spec

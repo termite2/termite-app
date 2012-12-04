@@ -10,6 +10,8 @@ import Data.Maybe
 import System.Environment
 import Text.Parsec
 import qualified Text.PrettyPrint as P
+import System.Console.GetOpt
+import System.Directory
 
 import qualified ISpec as I
 import SpecInline
@@ -40,12 +42,30 @@ import EqSMT
 import Adaptor
 import FCompile
 
+data TOption = InputTSL String
+             | ImportDir String
+
+options :: [OptDescr TOption]
+options = [Option ['i'] [] (ReqArg InputTSL "FILE") "input TSL file",
+           Option ['I'] [] (ReqArg ImportDir "DIRECTORY") "additional import lookup directory"]
+
+data Config = Config {confTSLFile    :: FilePath,
+                      confImportDirs :: [FilePath]}
+
+defaultConfig = Config { confTSLFile    = ""
+                       , confImportDirs = []}
+
+addOption :: TOption -> Config -> Config
+addOption (InputTSL f)  config = config{confTSLFile = f}
+addOption (ImportDir d) config = config{confImportDirs = (confImportDirs config) ++ [d]}
+
 main = do
     args <- getArgs
-    f <- case args of
-             [] -> fail $ "File name required"
-             _ -> return $ head args
-    mods <- parseTSL M.empty f
+    prog <- getProgName
+    config <- case getOpt Permute options args of
+                   (flags, [], []) -> return $ foldr addOption defaultConfig flags
+                   _ -> fail $ usageInfo ("Usage: " ++ prog ++ " [OPTION...]") options 
+    mods <- parseTSL M.empty (confTSLFile config) (confImportDirs config)
     let spec = mkSpec $ concat $ snd $ unzip $ M.toList mods
     writeFile "output.tsl" $ P.render $ pp spec
     case validateSpec spec of
@@ -82,8 +102,8 @@ instance PP [SpecItem] where
 -- Recursively parse TSL file and all of its imports
 -- Takes a map of already parsed files and the name of the file
 -- to parse
-parseTSL :: M.Map FilePath [SpecItem] -> FilePath -> IO (M.Map FilePath [SpecItem])
-parseTSL modules f = do
+parseTSL :: M.Map FilePath [SpecItem] -> FilePath -> [FilePath] -> IO (M.Map FilePath [SpecItem])
+parseTSL modules f dirs = do
     tsl <- readFile f
     --putStr tsl
     spec <- case parse grammar f tsl of
@@ -91,10 +111,19 @@ parseTSL modules f = do
                  Right st -> return st
     writeFile (f ++ ".out") $ P.render $ pp spec
     -- Parse imports
-    foldM (\mods imp -> if M.member imp mods
-                           then return mods
-                           else parseTSL mods imp)
+    foldM (\mods imp -> do imp' <- findImport imp dirs
+                           if M.member imp' mods
+                              then return mods
+                              else parseTSL mods imp' dirs)
           (M.insert f spec modules) (imports spec)
+
+findImport :: FilePath -> [FilePath] -> IO String
+findImport f dirs = do
+    let dirs' = "":(map (++"/") dirs)
+    match <- filterM (\d -> doesFileExist (d ++ f)) dirs'
+    case match of
+         [] -> fail $ "File not found: " ++ f
+         _  -> return $ head match ++ f
 
 -- Extract the list of imports from parsed TSL spec
 imports :: [SpecItem] -> [FilePath]

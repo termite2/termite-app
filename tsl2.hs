@@ -36,11 +36,16 @@ import ExprOps
 import StatementOps
 import NS
 import Cascade
-import AbsGame
 import TSLAbsGame
 import EqSMT
-import Adaptor
 import FCompile
+import SetExplorer
+import MultiSetExplorer
+import VarView
+import DbgGUI
+import DbgTypes
+import Cudd 
+import SMTLib2
 
 data TOption = InputTSL String
              | ImportDir String
@@ -58,6 +63,8 @@ defaultConfig = Config { confTSLFile    = ""
 addOption :: TOption -> Config -> Config
 addOption (InputTSL f)  config = config{confTSLFile = f}
 addOption (ImportDir d) config = config{confImportDirs = (confImportDirs config) ++ [d]}
+
+instance Vals ()
 
 main = do
     args <- getArgs
@@ -80,9 +87,10 @@ main = do
          Right _ -> putStrLn "flattened spec validation successful"
     let ispec = spec2Internal spec'
     writeFile "output3.tsl" $ P.render $ pp ispec
-    let game = tslAbsGame ispec
-    let result = runST $ doEverything game newPDBPriv (eqSolver ispec)
-    putStrLn $ "result: " ++ show result
+
+--    let game = tslAbsGame ispec
+--    result <- stToIO $ doEverything game {-((debugGUI [])::(Model DdManager DdNode () -> IO ()))-} newPDBPriv (eqSolver ispec)
+--    putStrLn $ "result: " ++ show result
 
 mkSpec :: [SpecItem] -> Spec
 mkSpec is = Spec templates types consts

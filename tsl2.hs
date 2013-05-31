@@ -1,11 +1,9 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses #-}
 
 module Main where
 
 import qualified Data.Map as M
 import Control.Monad
-import Control.Monad.Error
-import Control.Monad.ST.Lazy
 import Data.Maybe
 import System.Environment
 import Text.Parsec
@@ -13,39 +11,20 @@ import qualified Text.PrettyPrint as P
 import System.Console.GetOpt
 import System.Directory
 
-import qualified ISpec as I
 import SpecInline
 import PP
-import Pos
 import Name
 import Parse
-import Type
 import TypeOps
-import Const   
-import Var     
-import Process
-import ProcessOps
-import Method
-import MethodOps
-import Template
-import TemplateOps
 import Spec
 import SpecOps
-import Expr
-import ExprOps
-import StatementOps
-import NS
-import Cascade
-import TSLAbsGame
-import EqSMT
-import FCompile
-import SetExplorer
-import MultiSetExplorer
-import VarView
 import DbgGUI
 import DbgTypes
 import Cudd 
 import SMTLib2
+import SourceView
+import CuddSymTab
+import LogicClasses
 
 data TOption = InputTSL String
              | ImportDir String
@@ -64,7 +43,7 @@ addOption :: TOption -> Config -> Config
 addOption (InputTSL f)  config = config{confTSLFile = f}
 addOption (ImportDir d) config = config{confImportDirs = (confImportDirs config) ++ [d]}
 
-instance Vals ()
+instance Rel DdManager VarData DdNode [[SatBit]]
 
 main = do
     args <- getArgs
@@ -87,6 +66,21 @@ main = do
          Right _ -> putStrLn "flattened spec validation successful"
     let ispec = spec2Internal spec'
     writeFile "output3.tsl" $ P.render $ pp ispec
+    -- start debugger
+    let ddmanager = cuddInit
+    let solver = newSMTLib2Solver ispec z3Config
+    let sourceViewFactory ref = sourceViewNew spec spec' ispec [] solver ref
+    let dbgmodel = Model { mCtx           = ddmanager
+                         , mStateVars     = []
+                         , mUntrackedVars = []
+                         , mLabelVars     = []
+                         , mStateRels     = []
+                         , mTransRels     = [("trans", topOp ddmanager)]
+                         , mViews         = []
+                         }
+    putStrLn "starting debugger"
+    debugGUI [(sourceViewFactory, True)] dbgmodel
+    
 
 --    let game = tslAbsGame ispec
 --    result <- stToIO $ doEverything game {-((debugGUI [])::(Model DdManager DdNode () -> IO ()))-} newPDBPriv (eqSolver ispec)

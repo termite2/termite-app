@@ -12,7 +12,7 @@ LIBPATHS= ${CUDDLIBPATHS} \
 	 ${CUDD_HASKELL_PATH}
 TARGET=tsl2.hs
 CLIBS=${LIBS} stdc++
-GHC_FLAGS+=-o $(ROOT)/bin/tsl2 # -prof -auto-all -rtsopts # -fforce-recomp 
+GHC_FLAGS+=-o $(ROOT)/bin/tsl2 -Wall -fno-warn-incomplete-patterns -fno-warn-missing-signatures  #-fforce-recomp # -prof -auto-all -rtsopts # -fforce-recomp 
 
 CABAL_PACKAGES= 
 

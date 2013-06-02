@@ -1,10 +1,15 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, ScopedTypeVariables, RecordWildCards, UndecidableInstances #-}
 
 module Main where
 
 import qualified Data.Map as M
 import Control.Monad
+import Control.Monad.ST
+import Control.Monad.IO.Class
+import Control.Monad.Trans
+import Control.Error
 import Data.Maybe
+import Data.List
 import System.Environment
 import Text.Parsec
 import qualified Text.PrettyPrint as P
@@ -25,23 +30,40 @@ import SMTLib2
 import SourceView
 import CuddSymTab
 import LogicClasses
+import AbstractorIFace
+import RefineCommon
+import Interface
+import TermiteGame
+import Predicate
+import TSLAbsGame
+import CuddExplicitDeref
+import CuddConvert
+import BDDOps
+import EqSMT
+import Store
+import qualified ISpec as I
 
 data TOption = InputTSL String
              | ImportDir String
+             | DoSynthesis
 
 options :: [OptDescr TOption]
-options = [Option ['i'] [] (ReqArg InputTSL "FILE") "input TSL file",
-           Option ['I'] [] (ReqArg ImportDir "DIRECTORY") "additional import lookup directory"]
+options = [ Option ['i'] [] (ReqArg InputTSL "FILE")       "input TSL file"
+          , Option ['I'] [] (ReqArg ImportDir "DIRECTORY") "additional import lookup directory"
+          , Option ['s'] [] (NoArg DoSynthesis)            "perform synthesis"]
 
-data Config = Config {confTSLFile    :: FilePath,
-                      confImportDirs :: [FilePath]}
+data Config = Config { confTSLFile     :: FilePath
+                     , confImportDirs  :: [FilePath]
+                     , confDoSynthesis :: Bool}
 
-defaultConfig = Config { confTSLFile    = ""
-                       , confImportDirs = []}
+defaultConfig = Config { confTSLFile     = ""
+                       , confImportDirs  = []
+                       , confDoSynthesis = False}
 
 addOption :: TOption -> Config -> Config
 addOption (InputTSL f)  config = config{confTSLFile = f}
 addOption (ImportDir d) config = config{confImportDirs = (confImportDirs config) ++ [d]}
+addOption DoSynthesis   config = config{confDoSynthesis = True}
 
 instance Rel DdManager VarData DdNode [[SatBit]]
 
@@ -66,6 +88,24 @@ main = do
          Right _ -> putStrLn "flattened spec validation successful"
     let ispec = spec2Internal spec'
     writeFile "output3.tsl" $ P.render $ pp ispec
+    if not $ confDoSynthesis config
+       then debugConcrete spec spec' ispec
+       else do (res, model) <- synthesise ispec
+               putStrLn $ "Synthesis returned " ++ show res
+               debugGUI ([] :: [(RModel DdManager DdNode Store -> IO (View DdNode Store), Bool)]) model
+
+synthesise :: I.Spec -> IO (Bool, Model DdManager DdNode Store)
+synthesise spec = runScript $ do
+    hoistEither $ runST $ runEitherT $ do
+        m <- lift $ RefineCommon.setupManager 
+        let abs = tslAbsGame spec m
+        let ts = eqTheorySolver spec m 
+        ((res, rs, rd), db) <- lift $ absRefineLoop m abs ts ()
+        return (res, mkModel m rs rd (_sections db) (_symbolTable db))
+
+
+debugConcrete :: Spec -> Spec -> I.Spec -> IO ()
+debugConcrete spec spec' ispec = do
     -- start debugger
     let ddmanager = cuddInit
     let solver = newSMTLib2Solver ispec z3Config

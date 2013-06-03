@@ -1,15 +1,12 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, ScopedTypeVariables, RecordWildCards, UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, ScopedTypeVariables, RecordWildCards, UndecidableInstances, TupleSections #-}
 
 module Main where
 
 import qualified Data.Map as M
 import Control.Monad
 import Control.Monad.ST
-import Control.Monad.IO.Class
 import Control.Monad.Trans
 import Control.Error
-import Data.Maybe
-import Data.List
 import System.Environment
 import Text.Parsec
 import qualified Text.PrettyPrint as P
@@ -20,7 +17,6 @@ import SpecInline
 import PP
 import Name
 import Parse
-import TypeOps
 import Spec
 import SpecOps
 import DbgGUI
@@ -34,13 +30,10 @@ import AbstractorIFace
 import RefineCommon
 import Interface
 import TermiteGame
-import Predicate
 import TSLAbsGame
-import CuddExplicitDeref
-import CuddConvert
-import BDDOps
 import EqSMT
 import Store
+import Predicate
 import qualified ISpec as I
 
 data TOption = InputTSL String
@@ -88,39 +81,39 @@ main = do
          Right _ -> putStrLn "flattened spec validation successful"
     let ispec = spec2Internal spec'
     writeFile "output3.tsl" $ P.render $ pp ispec
-    if not $ confDoSynthesis config
-       then debugConcrete spec spec' ispec
-       else do (res, model) <- synthesise ispec
-               putStrLn $ "Synthesis returned " ++ show res
-               debugGUI ([] :: [(RModel DdManager DdNode Store -> IO (View DdNode Store), Bool)]) model
+    (model, absvars) <- if not $ confDoSynthesis config
+                           then liftM (,[]) concreteModel 
+                           else do (res, avars, model) <- synthesise ispec
+                                   putStrLn $ "Synthesis returned " ++ show res
+                                   return (model, avars)
+    putStrLn "starting debugger"
+    let solver = newSMTLib2Solver ispec z3Config
+    let sourceViewFactory ref = sourceViewNew spec spec' ispec absvars solver ref
+    debugGUI [(sourceViewFactory, True)] model
 
-synthesise :: I.Spec -> IO (Bool, Model DdManager DdNode Store)
+synthesise :: I.Spec -> IO (Bool, [AbsVar], Model DdManager DdNode Store)
 synthesise spec = runScript $ do
     hoistEither $ runST $ runEitherT $ do
         m <- lift $ RefineCommon.setupManager 
-        let abs = tslAbsGame spec m
+        let agame = tslAbsGame spec m
         let ts = eqTheorySolver spec m 
-        ((res, rs, rd), db) <- lift $ absRefineLoop m abs ts ()
-        return (res, mkModel m rs rd (_sections db) (_symbolTable db))
+        ((res, rs, rd), pdb) <- lift $ absRefineLoop m agame ts ()
+        let avars = (M.keys $ _stateVars $ _symbolTable pdb) ++ (M.keys $ _labelVars $ _symbolTable pdb)
+        return (res, avars, mkModel spec m rs rd (_sections pdb) (_symbolTable pdb))
 
-
-debugConcrete :: Spec -> Spec -> I.Spec -> IO ()
-debugConcrete spec spec' ispec = do
+-- Debugger model without any abstract state (suitable for source-level debugging only)
+concreteModel :: IO (Model DdManager DdNode Store)
+concreteModel = do
     -- start debugger
     let ddmanager = cuddInit
-    let solver = newSMTLib2Solver ispec z3Config
-    let sourceViewFactory ref = sourceViewNew spec spec' ispec [] solver ref
-    let dbgmodel = Model { mCtx           = ddmanager
-                         , mStateVars     = []
-                         , mUntrackedVars = []
-                         , mLabelVars     = []
-                         , mStateRels     = []
-                         , mTransRels     = [("trans", topOp ddmanager)]
-                         , mViews         = []
-                         }
-    putStrLn "starting debugger"
-    debugGUI [(sourceViewFactory, True)] dbgmodel
-    
+    return Model { mCtx           = ddmanager
+                 , mStateVars     = []
+                 , mUntrackedVars = []
+                 , mLabelVars     = []
+                 , mStateRels     = []
+                 , mTransRels     = [("trans", topOp ddmanager)]
+                 , mViews         = []
+                 }
 
 --    let game = tslAbsGame ispec
 --    result <- stToIO $ doEverything game {-((debugGUI [])::(Model DdManager DdNode () -> IO ()))-} newPDBPriv (eqSolver ispec)
@@ -170,5 +163,5 @@ findImport f dirs = do
 -- Extract the list of imports from parsed TSL spec
 imports :: [SpecItem] -> [FilePath]
 imports s = mapMaybe (\item -> case item of
-                                    SpImport (Import _ (Ident _ name)) -> Just name
-                                    _ -> Nothing) s
+                                    SpImport (Import _ (Ident _ n)) -> Just n
+                                    _                               -> Nothing) s

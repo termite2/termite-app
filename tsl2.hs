@@ -22,9 +22,9 @@ import SpecOps
 import DbgGUI
 import DbgTypes
 import Cudd 
+import CuddReorder
 import SMTLib2
 import SourceView
-import CuddSymTab
 import LogicClasses
 import AbstractorIFace
 import RefineCommon
@@ -33,6 +33,7 @@ import TermiteGame
 import TSLAbsGame
 import EqSMT
 import Store
+import SMTSolver
 import Predicate
 import qualified ISpec as I
 
@@ -58,8 +59,6 @@ addOption (InputTSL f)  config = config{confTSLFile = f}
 addOption (ImportDir d) config = config{confImportDirs = (confImportDirs config) ++ [d]}
 addOption DoSynthesis   config = config{confDoSynthesis = True}
 
-instance Rel DdManager VarData DdNode [[SatBit]]
-
 main = do
     args <- getArgs
     prog <- getProgName
@@ -81,38 +80,40 @@ main = do
          Right _ -> putStrLn "flattened spec validation successful"
     let ispec = spec2Internal spec'
     writeFile "output3.tsl" $ P.render $ pp ispec
+    let solver = newSMTLib2Solver ispec z3Config
     (model, absvars) <- if not $ confDoSynthesis config
-                           then liftM (,[]) concreteModel 
-                           else do (res, avars, model) <- synthesise ispec
+                           then liftM (,M.empty) concreteModel 
+                           else do (res, avars, model) <- synthesise ispec solver
                                    putStrLn $ "Synthesis returned " ++ show res
                                    return (model, avars)
     putStrLn "starting debugger"
-    let solver = newSMTLib2Solver ispec z3Config
     let sourceViewFactory ref = sourceViewNew spec spec' ispec absvars solver ref
     debugGUI [(sourceViewFactory, True)] model
 
-synthesise :: I.Spec -> IO (Bool, [AbsVar], Model DdManager DdNode Store)
-synthesise spec = runScript $ do
+synthesise :: I.Spec -> SMTSolver -> IO (Bool, M.Map String AbsVar, Model DdManager DdNode Store)
+synthesise spec solver = runScript $ do
     hoistEither $ runST $ runEitherT $ do
         m <- lift $ RefineCommon.setupManager 
         let agame = tslAbsGame spec m
         let ts = eqTheorySolver spec m 
         ((res, rs, rd), pdb) <- lift $ absRefineLoop m agame ts ()
-        let avars = (M.keys $ _stateVars $ _symbolTable pdb) ++ (M.keys $ _labelVars $ _symbolTable pdb)
-        return (res, avars, mkModel spec m rs rd (_sections pdb) (_symbolTable pdb))
+        lift $ cuddAutodynDisable m
+        let avars = M.fromList $ map (\v -> (show v,v)) $ (M.keys $ _stateVars $ _symbolTable pdb) ++ (M.keys $ _labelVars $ _symbolTable pdb)
+        return (res, avars, mkModel spec m rs rd (_sections pdb) (_symbolTable pdb) solver avars)
 
 -- Debugger model without any abstract state (suitable for source-level debugging only)
 concreteModel :: IO (Model DdManager DdNode Store)
 concreteModel = do
     -- start debugger
     let ddmanager = cuddInit
-    return Model { mCtx           = ddmanager
-                 , mStateVars     = []
-                 , mUntrackedVars = []
-                 , mLabelVars     = []
-                 , mStateRels     = []
-                 , mTransRels     = [("trans", topOp ddmanager)]
-                 , mViews         = []
+    return Model { mCtx             = ddmanager
+                 , mStateVars       = []
+                 , mUntrackedVars   = []
+                 , mLabelVars       = []
+                 , mStateRels       = []
+                 , mTransRels       = [("trans", topOp ddmanager)]
+                 , mViews           = []
+                 , mConcretiseState = (\_ -> Nothing)
                  }
 
 --    let game = tslAbsGame ispec

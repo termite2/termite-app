@@ -28,7 +28,6 @@ import SourceView
 import LogicClasses
 import AbstractorIFace
 import RefineCommon
-import Interface
 import TermiteGame
 import TSLAbsGame
 import EqSMT
@@ -96,24 +95,26 @@ synthesise spec solver = runScript $ do
         m <- lift $ RefineCommon.setupManager 
         let agame = tslAbsGame spec m
         let ts = eqTheorySolver spec m 
-        ((res, rs, rd), pdb) <- lift $ absRefineLoop m agame ts ()
-        lift $ cuddAutodynDisable m
-        let avars = M.fromList $ map (\v -> (show v,v)) $ (M.keys $ _stateVars $ _symbolTable pdb) ++ (M.keys $ _labelVars $ _symbolTable pdb)
-        return (res, avars, mkModel spec m rs rd (_sections pdb) (_symbolTable pdb) solver avars)
+        sr <- (liftM $ mkSynthesisRes spec m) $ lift $ absRefineLoop m agame ts ()
+        let model = mkModel spec solver sr
+--        lift $ cuddAutodynDisable m
+        return (srWin sr, srAbsVars sr, model)
 
 -- Debugger model without any abstract state (suitable for source-level debugging only)
 concreteModel :: IO (Model DdManager DdNode Store)
 concreteModel = do
     -- start debugger
     let ddmanager = cuddInit
-    return Model { mCtx             = ddmanager
-                 , mStateVars       = []
-                 , mUntrackedVars   = []
-                 , mLabelVars       = []
-                 , mStateRels       = []
-                 , mTransRels       = [("trans", topOp ddmanager)]
-                 , mViews           = []
-                 , mConcretiseState = (\_ -> Nothing)
+    return Model { mCtx                  = ddmanager
+                 , mStateVars            = []
+                 , mUntrackedVars        = []
+                 , mLabelVars            = []
+                 , mStateRels            = []
+                 , mTransRels            = [("trans", topOp ddmanager)]
+                 , mViews                = []
+                 , mConcretiseState      = (\_ -> Nothing)
+                 , mConcretiseTransition = (\_ -> Nothing)
+                 , mAutoConcretiseTrans  = False
                  }
 
 --    let game = tslAbsGame ispec

@@ -82,21 +82,21 @@ main = do
     let solver = newSMTLib2Solver ispec z3Config
     (model, absvars) <- if not $ confDoSynthesis config
                            then liftM (,M.empty) concreteModel 
-                           else do (res, avars, model) <- synthesise ispec solver
+                           else do (res, avars, model) <- synthesise spec' ispec solver
                                    putStrLn $ "Synthesis returned " ++ show res
                                    return (model, avars)
     putStrLn "starting debugger"
     let sourceViewFactory ref = sourceViewNew spec spec' ispec absvars solver ref
     debugGUI [(sourceViewFactory, True)] model
 
-synthesise :: I.Spec -> SMTSolver -> IO (Bool, M.Map String AbsVar, Model DdManager DdNode Store)
-synthesise spec solver = runScript $ do
+synthesise :: Spec -> I.Spec -> SMTSolver -> IO (Bool, M.Map String AbsVar, Model DdManager DdNode Store)
+synthesise flatspec spec solver = runScript $ do
     hoistEither $ runST $ runEitherT $ do
         m <- lift $ RefineCommon.setupManager 
         let agame = tslAbsGame spec m
         let ts = eqTheorySolver spec m 
         sr <- (liftM $ mkSynthesisRes spec m) $ lift $ absRefineLoop m agame ts ()
-        let model = mkModel spec solver sr
+        let model = mkModel flatspec spec solver sr
 --        lift $ cuddAutodynDisable m
         return (srWin sr, srAbsVars sr, model)
 

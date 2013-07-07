@@ -22,9 +22,9 @@ import SpecOps
 import DbgGUI
 import DbgTypes
 import Cudd 
-import CuddReorder
 import SMTLib2
 import SourceView
+import StrategyView
 import LogicClasses
 import AbstractorIFace
 import RefineCommon
@@ -80,25 +80,27 @@ main = do
     let ispec = spec2Internal spec'
     writeFile "output3.tsl" $ P.render $ pp ispec
     let solver = newSMTLib2Solver ispec z3Config
-    (model, absvars) <- if not $ confDoSynthesis config
-                           then liftM (,M.empty) concreteModel 
-                           else do (res, avars, model) <- synthesise spec' ispec solver
-                                   putStrLn $ "Synthesis returned " ++ show res
-                                   return (model, avars)
+    (model, absvars, sfact) <- if not $ confDoSynthesis config
+                                  then liftM (,M.empty, []) concreteModel 
+                                  else do (res, avars, model, strategy) <- synthesise spec' ispec solver
+                                          putStrLn $ "Synthesis returned " ++ show res
+                                          return (model, avars, [(strategyViewNew strategy, True)])
     putStrLn "starting debugger"
-    let sourceViewFactory ref = sourceViewNew spec spec' ispec absvars solver ref
-    debugGUI [(sourceViewFactory, True)] model
+    let sourceViewFactory   = sourceViewNew spec spec' ispec absvars solver
+    debugGUI ((sourceViewFactory, True):sfact) model
 
-synthesise :: Spec -> I.Spec -> SMTSolver -> IO (Bool, M.Map String AbsVar, Model DdManager DdNode Store)
+synthesise :: Spec -> I.Spec -> SMTSolver -> IO (Bool, M.Map String AbsVar, Model DdManager DdNode Store, Strategy DdNode)
 synthesise flatspec spec solver = runScript $ do
     hoistEither $ runST $ runEitherT $ do
         m <- lift $ RefineCommon.setupManager 
         let agame = tslAbsGame spec m
         let ts = eqTheorySolver spec m 
-        sr <- (liftM $ mkSynthesisRes spec m) $ lift $ absRefineLoop m agame ts ()
+        sr <- lift $ do (win, ri) <- absRefineLoop m agame ts ()
+                        mkSynthesisRes spec m (win, ri)
         let model = mkModel flatspec spec solver sr
+            strategy = mkStrategy spec sr
 --        lift $ cuddAutodynDisable m
-        return (srWin sr, srAbsVars sr, model)
+        return (srWin sr, srAbsVars sr, model, strategy)
 
 -- Debugger model without any abstract state (suitable for source-level debugging only)
 concreteModel :: IO (Model DdManager DdNode Store)
@@ -115,6 +117,8 @@ concreteModel = do
                  , mConcretiseState      = (\_ -> Nothing)
                  , mConcretiseTransition = (\_ -> Nothing)
                  , mAutoConcretiseTrans  = False
+                 , mConstraints          = M.empty
+                 , mTransRel             = botOp ddmanager 
                  }
 
 --    let game = tslAbsGame ispec

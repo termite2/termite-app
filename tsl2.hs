@@ -8,15 +8,13 @@ import Control.Monad.ST
 import Control.Monad.Trans
 import Control.Error
 import System.Environment
-import Text.Parsec
 import qualified Text.PrettyPrint as P
 import System.Console.GetOpt
-import System.Directory
 
 import SpecInline
 import PP
-import Name
 import Parse
+import Grammar
 import Spec
 import SpecOps
 import DbgGUI
@@ -121,10 +119,6 @@ concreteModel = do
                  , mTransRel             = botOp ddmanager 
                  }
 
---    let game = tslAbsGame ispec
---    result <- stToIO $ doEverything game {-((debugGUI [])::(Model DdManager DdNode () -> IO ()))-} newPDBPriv (eqSolver ispec)
---    putStrLn $ "result: " ++ show result
-
 mkSpec :: [SpecItem] -> Spec
 mkSpec is = Spec templates types consts
     where templates = mapMaybe (\i -> case i of 
@@ -140,34 +134,3 @@ mkSpec is = Spec templates types consts
 instance PP [SpecItem] where
     pp is = P.vcat $ map ((P.$+$ P.text "") . pp) is
 
--- Recursively parse TSL file and all of its imports
--- Takes a map of already parsed files and the name of the file
--- to parse
-parseTSL :: M.Map FilePath [SpecItem] -> FilePath -> [FilePath] -> IO (M.Map FilePath [SpecItem])
-parseTSL modules f dirs = do
-    tsl <- readFile f
-    --putStr tsl
-    spec <- case parse grammar f tsl of
-                 Left e -> fail $ show e
-                 Right st -> return st
-    writeFile (f ++ ".out") $ P.render $ pp spec
-    -- Parse imports
-    foldM (\mods imp -> do imp' <- findImport imp dirs
-                           if M.member imp' mods
-                              then return mods
-                              else parseTSL mods imp' dirs)
-          (M.insert f spec modules) (imports spec)
-
-findImport :: FilePath -> [FilePath] -> IO String
-findImport f dirs = do
-    let dirs' = "":(map (++"/") dirs)
-    match <- filterM (\d -> doesFileExist (d ++ f)) dirs'
-    case match of
-         [] -> fail $ "File not found: " ++ f
-         _  -> return $ head match ++ f
-
--- Extract the list of imports from parsed TSL spec
-imports :: [SpecItem] -> [FilePath]
-imports s = mapMaybe (\item -> case item of
-                                    SpImport (Import _ (Ident _ n)) -> Just n
-                                    _                               -> Nothing) s

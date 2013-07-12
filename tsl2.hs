@@ -14,7 +14,6 @@ import System.Console.GetOpt
 import SpecInline
 import PP
 import Parse
-import Grammar
 import Spec
 import SpecOps
 import DbgGUI
@@ -62,8 +61,7 @@ main = do
     config <- case getOpt Permute options args of
                    (flags, [], []) -> return $ foldr addOption defaultConfig flags
                    _ -> fail $ usageInfo ("Usage: " ++ prog ++ " [OPTION...]") options 
-    mods <- parseTSL M.empty (confTSLFile config) (confImportDirs config)
-    let spec = mkSpec $ concat $ snd $ unzip $ M.toList mods
+    spec <- parseTSL (confTSLFile config) (confImportDirs config)
     writeFile "output.tsl" $ P.render $ pp spec
     case validateSpec spec of
          Left e  -> fail $ "validation error: " ++ e
@@ -118,19 +116,4 @@ concreteModel = do
                  , mConstraints          = M.empty
                  , mTransRel             = botOp ddmanager 
                  }
-
-mkSpec :: [SpecItem] -> Spec
-mkSpec is = Spec templates types consts
-    where templates = mapMaybe (\i -> case i of 
-                                           SpTemplate t -> Just t
-                                           _            -> Nothing) is
-          types = mapMaybe (\i -> case i of 
-                                           SpType t     -> Just t
-                                           _            -> Nothing) is
-          consts = mapMaybe (\i -> case i of 
-                                           SpConst c    -> Just c
-                                           _            -> Nothing) is
-
-instance PP [SpecItem] where
-    pp is = P.vcat $ map ((P.$+$ P.text "") . pp) is
 

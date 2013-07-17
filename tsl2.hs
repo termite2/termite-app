@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, ScopedTypeVariables, RecordWildCards, UndecidableInstances, TupleSections #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, ScopedTypeVariables, RecordWildCards, UndecidableInstances, TupleSections, ImplicitParams #-}
 
 module Main where
 
@@ -73,9 +73,9 @@ main = do
     case validateSpec spec' of
          Left e  -> fail $ "flattened spec validation error: " ++ e
          Right _ -> putStrLn "flattened spec validation successful"
-    let ispec = spec2Internal spec'
-    writeFile "output3.tsl" $ P.render $ pp ispec
     let solver = newSMTLib2Solver ispec z3Config
+        ispec = let ?solver = solver in spec2Internal spec'
+    writeFile "output3.tsl" $ P.render $ pp ispec
     (model, absvars, sfact) <- if not $ confDoSynthesis config
                                   then liftM (,M.empty, []) concreteModel 
                                   else do (res, avars, model, strategy) <- synthesise spec spec' ispec solver

@@ -3,7 +3,6 @@
 module Main where
 
 import qualified Data.Map as M
-import Control.Monad
 import Control.Monad.ST
 import Control.Monad.Trans
 import Control.Error
@@ -11,6 +10,7 @@ import System.Environment
 import qualified Text.PrettyPrint as P
 import System.Console.GetOpt
 
+import Util
 import SpecInline
 import PP
 import Parse
@@ -22,7 +22,6 @@ import Cudd
 import SMTLib2
 import SourceView
 import StrategyView
-import LogicClasses
 import AbstractorIFace
 import RefineCommon
 import TermiteGame
@@ -31,7 +30,8 @@ import EqSMT
 import Store
 import SMTSolver
 import Predicate
-import qualified ISpec as I
+import qualified ISpec    as I
+import qualified TranSpec as I
 
 data TOption = InputTSL String
              | ImportDir String
@@ -73,14 +73,15 @@ main = do
     case validateSpec spec' of
          Left e  -> fail $ "flattened spec validation error: " ++ e
          Right _ -> putStrLn "flattened spec validation successful"
-    let solver = newSMTLib2Solver ispec z3Config
-        ispec = let ?solver = solver in spec2Internal spec'
+    let solver = newSMTLib2Solver ispecFull z3Config
+        ispecFull = let ?solver = solver in spec2Internal spec'
+        ispecDummy = ispecFull {I.specTran = (I.specTran ispecFull) { I.tsCTran = []
+                                                                    , I.tsUTran = []}}   
+        ispec = if' (confDoSynthesis config) ispecFull ispecDummy
     writeFile "output3.tsl" $ P.render $ pp ispec
-    (model, absvars, sfact) <- if not $ confDoSynthesis config
-                                  then liftM (,M.empty, []) concreteModel 
-                                  else do (res, avars, model, strategy) <- synthesise spec spec' ispec solver
-                                          putStrLn $ "Synthesis returned " ++ show res
-                                          return (model, avars, [(strategyViewNew strategy, True)])
+    (model, absvars, sfact) <- do (res, avars, model, strategy) <- synthesise spec spec' ispec solver
+                                  putStrLn $ "Synthesis returned " ++ show res
+                                  return (model, avars, [(strategyViewNew strategy, True)])
     putStrLn "starting debugger"
     let sourceViewFactory   = sourceViewNew spec spec' ispec absvars solver
     debugGUI ((sourceViewFactory, True):sfact) model
@@ -97,23 +98,3 @@ synthesise inspec flatspec spec solver = runScript $ do
             strategy = mkStrategy spec sr
 --        lift $ cuddAutodynDisable m
         return (srWin sr, srAbsVars sr, model, strategy)
-
--- Debugger model without any abstract state (suitable for source-level debugging only)
-concreteModel :: IO (Model DdManager DdNode Store)
-concreteModel = do
-    -- start debugger
-    let ddmanager = cuddInit
-    return Model { mCtx                  = ddmanager
-                 , mStateVars            = []
-                 , mUntrackedVars        = []
-                 , mLabelVars            = []
-                 , mStateRels            = []
-                 , mTransRels            = [("trans", topOp ddmanager)]
-                 , mViews                = []
-                 , mConcretiseState      = (\_ -> Nothing)
-                 , mConcretiseTransition = (\_ -> Nothing)
-                 , mAutoConcretiseTrans  = False
-                 , mConstraints          = M.empty
-                 , mTransRel             = botOp ddmanager 
-                 }
-

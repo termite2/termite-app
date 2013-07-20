@@ -84,7 +84,7 @@ main = do
                                   return (model, avars, [(strategyViewNew strategy, True)])
     putStrLn "starting debugger"
     let sourceViewFactory   = sourceViewNew spec spec' ispec absvars solver
-    debugGUI (if' (confDoSynthesis config) ((sourceViewFactory, True):sfact) []) model
+    debugGUI ((sourceViewFactory, True):(if' (confDoSynthesis config) sfact [])) model
 
 synthesise :: Spec -> Spec -> I.Spec -> SMTSolver -> IO (Bool, M.Map String AbsVar, Model DdManager DdNode Store, Strategy DdNode)
 synthesise inspec flatspec spec solver = runScript $ do

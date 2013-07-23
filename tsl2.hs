@@ -73,11 +73,11 @@ main = do
     case validateSpec spec' of
          Left e  -> fail $ "flattened spec validation error: " ++ e
          Right _ -> putStrLn "flattened spec validation successful"
-    let solver = newSMTLib2Solver ispecFull z3Config
-        ispecFull = let ?solver = solver in spec2Internal spec'
+    let ispecFull = spec2Internal spec'
         ispecDummy = ispecFull {I.specTran = (I.specTran ispecFull) { I.tsCTran = []
                                                                     , I.tsUTran = []}}   
         ispec = if' (confDoSynthesis config) ispecFull ispecDummy
+        solver = newSMTLib2Solver ispecFull z3Config
     writeFile "output3.tsl" $ P.render $ pp ispec
     (model, absvars, sfact) <- do (res, avars, model, strategy) <- synthesise spec spec' ispec solver
                                   putStrLn $ "Synthesis returned " ++ show res

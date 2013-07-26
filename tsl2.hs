@@ -30,6 +30,7 @@ import EqSMT
 import Store
 import SMTSolver
 import Predicate
+import Resource
 import qualified ISpec    as I
 import qualified TranSpec as I
 
@@ -88,8 +89,8 @@ main = do
 
 synthesise :: Spec -> Spec -> I.Spec -> SMTSolver -> IO (Bool, M.Map String AbsVar, Model DdManager DdNode Store, Strategy DdNode)
 synthesise inspec flatspec spec solver = runScript $ do
-    hoistEither $ runST $ runEitherT $ do
-        m <- lift $ RefineCommon.setupManager 
+    hoistEither $ runST $ evalResourceT $ runEitherT $ do
+        m <- lift $ lift $ RefineCommon.setupManager 
         let agame = tslAbsGame spec m
         let ts = eqTheorySolver spec m 
         sr <- lift $ do (win, ri) <- absRefineLoop m agame ts ()

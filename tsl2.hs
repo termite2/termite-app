@@ -36,6 +36,7 @@ import Predicate
 import Resource (evalResourceT)
 import qualified ISpec    as I
 import qualified TranSpec as I
+import Spec2ASL
 
 data TOption = InputTSL String
              | ImportDir String
@@ -43,6 +44,7 @@ data TOption = InputTSL String
              | QBFSynthesis
              | NoBuiltins
              | NoFairness
+             | ASLConvert
         
 options :: [OptDescr TOption]
 options = [ Option ['i'] []             (ReqArg InputTSL "FILE")       "input TSL file"
@@ -50,21 +52,24 @@ options = [ Option ['i'] []             (ReqArg InputTSL "FILE")       "input TS
           , Option ['s'] []             (NoArg DoSynthesis)            "perform synthesis"
           , Option ['q'] []             (NoArg QBFSynthesis)           "run QBF-based synthesis after normal synthesis"
           , Option []    ["nobuiltins"] (NoArg NoBuiltins)             "do not include TSL2 builtins"
-          , Option []    ["nofairness"] (NoArg NoFairness)             "do not generate fairness constraints"]
+          , Option []    ["nofairness"] (NoArg NoFairness)             "do not generate fairness constraints"
+          , Option []    ["asl"]        (NoArg ASLConvert)             "try to convert spec to ASL format"]
 
 data Config = Config { confTSLFile      :: FilePath
                      , confImportDirs   :: [FilePath]
                      , confDoSynthesis  :: Bool
                      , confQBFSynthesis :: Bool
                      , confNoBuiltins   :: Bool
-                     , confNoFairness   :: Bool}
+                     , confNoFairness   :: Bool
+                     , confDoASL        :: Bool }
 
 defaultConfig = Config { confTSLFile      = ""
                        , confImportDirs   = []
                        , confDoSynthesis  = False
                        , confQBFSynthesis = False
                        , confNoBuiltins   = False
-                       , confNoFairness   = False}
+                       , confNoFairness   = False
+                       , confDoASL        = False}
 
 addOption :: TOption -> Config -> Config
 addOption (InputTSL f)  config = config{ confTSLFile      = f}
@@ -74,6 +79,7 @@ addOption QBFSynthesis  config = config{ confDoSynthesis  = True
                                        , confQBFSynthesis = True}
 addOption NoBuiltins    config = config{ confNoBuiltins   = True}
 addOption NoFairness    config = config{ confNoFairness   = True}
+addOption ASLConvert    config = config{ confDoASL        = True}
 
 main = do
     args <- getArgs
@@ -99,6 +105,8 @@ main = do
         ispec = if' (confDoSynthesis config) ispecFull ispecDummy
         solver = newSMTLib2Solver ispecFull z3Config
     writeFile "output3.tsl" $ P.render $ pp ispec
+    when (confDoASL config) $ writeFile "output.asl"  $ P.render $ spec2ASL ispec
+
     (model, absvars, sfact) <- do (res, avars, model, mstrategy) <- synthesise config spec spec' ispec solver (confDoSynthesis config)
                                   putStrLn $ "Synthesis returned " ++ show res
                                   return (model, avars, if' (isJust mstrategy) [(strategyViewNew $ fromJust mstrategy, True)] [])

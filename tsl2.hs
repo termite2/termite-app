@@ -43,7 +43,6 @@ data TOption = InputTSL String
              | DoSynthesis
              | QBFSynthesis
              | NoBuiltins
-             | NoFairness
              | ASLConvert
         
 options :: [OptDescr TOption]
@@ -52,7 +51,6 @@ options = [ Option ['i'] []             (ReqArg InputTSL "FILE")       "input TS
           , Option ['s'] []             (NoArg DoSynthesis)            "perform synthesis"
           , Option ['q'] []             (NoArg QBFSynthesis)           "run QBF-based synthesis after normal synthesis"
           , Option []    ["nobuiltins"] (NoArg NoBuiltins)             "do not include TSL2 builtins"
-          , Option []    ["nofairness"] (NoArg NoFairness)             "do not generate fairness constraints"
           , Option []    ["asl"]        (NoArg ASLConvert)             "try to convert spec to ASL format"]
 
 data Config = Config { confTSLFile      :: FilePath
@@ -60,7 +58,6 @@ data Config = Config { confTSLFile      :: FilePath
                      , confDoSynthesis  :: Bool
                      , confQBFSynthesis :: Bool
                      , confNoBuiltins   :: Bool
-                     , confNoFairness   :: Bool
                      , confDoASL        :: Bool }
 
 defaultConfig = Config { confTSLFile      = ""
@@ -68,7 +65,6 @@ defaultConfig = Config { confTSLFile      = ""
                        , confDoSynthesis  = False
                        , confQBFSynthesis = False
                        , confNoBuiltins   = False
-                       , confNoFairness   = False
                        , confDoASL        = False}
 
 addOption :: TOption -> Config -> Config
@@ -78,7 +74,6 @@ addOption DoSynthesis   config = config{ confDoSynthesis  = True}
 addOption QBFSynthesis  config = config{ confDoSynthesis  = True
                                        , confQBFSynthesis = True}
 addOption NoBuiltins    config = config{ confNoBuiltins   = True}
-addOption NoFairness    config = config{ confNoFairness   = True}
 addOption ASLConvert    config = config{ confDoASL        = True}
 
 main = do
@@ -99,7 +94,7 @@ main = do
     case validateSpec spec' of
          Left e  -> fail $ "flattened spec validation error: " ++ e
          Right _ -> putStrLn "flattened spec validation successful"
-    let ispecFull = spec2Internal spec' (not $ confNoFairness config)
+    let ispecFull = spec2Internal spec'
         ispecDummy = ispecFull {I.specTran = (I.specTran ispecFull) { I.tsCTran = []
                                                                     , I.tsUTran = []}}
         ispec = if' (confDoSynthesis config) ispecFull ispecDummy
@@ -107,7 +102,7 @@ main = do
     writeFile "output3.tsl" $ P.render $ pp ispec
     when (confDoASL config) $ writeFile "output.asl"  $ P.render $ spec2ASL ispec
 
-    (model, absvars, sfact) <- do (res, avars, model, mstrategy) <- synthesise config spec spec' ispec solver (confDoSynthesis config)
+    (model, absvars, sfact) <- do (res, avars, model, mstrategy) <- synthesise spec spec' ispec solver (confDoSynthesis config)
                                   putStrLn $ "Synthesis returned " ++ show res
                                   return (model, avars, if' (isJust mstrategy) [(strategyViewNew $ fromJust mstrategy, True)] [])
     when (confQBFSynthesis config) $ qbfSynth $ map ((absvars M.!) . sel1) $ mStateVars model
@@ -115,11 +110,11 @@ main = do
     let sourceViewFactory   = sourceViewNew spec spec' ispec absvars solver
     debugGUI ((sourceViewFactory, True):(if' (confDoSynthesis config) sfact [])) model
 
-synthesise :: Config -> Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store, Maybe (Strategy DdNode))
-synthesise config inspec flatspec spec solver dostrat = runScript $ do
+synthesise :: Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store, Maybe (Strategy DdNode))
+synthesise inspec flatspec spec solver dostrat = runScript $ do
     hoistEither $ runST $ evalResourceT $ runEitherT $ do
         m <- lift $ lift $ RefineCommon.setupManager 
-        let agame = tslAbsGame spec m (not $ confNoFairness config)
+        let agame = tslAbsGame spec m
         let ts = eqTheorySolver spec m 
         sr <- lift $ do (win, ri) <- absRefineLoop m agame ts ()
                         mkSynthesisRes spec m (if' dostrat (Just win) Nothing, ri)

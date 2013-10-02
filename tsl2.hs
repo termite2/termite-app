@@ -24,6 +24,7 @@ import DbgTypes
 import Cudd 
 import SMTLib2
 import SourceView
+import SourceViewTypes
 import StrategyView
 import AbstractorIFace
 import RefineCommon
@@ -110,7 +111,7 @@ main = do
     let sourceViewFactory   = sourceViewNew spec spec' ispec absvars solver
     debugGUI ((sourceViewFactory, True):(if' (confDoSynthesis config) sfact [])) model
 
-synthesise :: Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store, Maybe (Strategy DdNode))
+synthesise :: Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
 synthesise inspec flatspec spec solver dostrat = runScript $ do
     hoistEither $ runST $ evalResourceT $ runEitherT $ do
         m <- lift $ lift $ RefineCommon.setupManager 

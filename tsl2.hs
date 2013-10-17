@@ -5,9 +5,10 @@ module Main where
 import qualified Data.Map as M
 import Data.Tuple.Select
 import Data.Maybe
+import Control.Monad
 import Control.Monad.ST
 import Control.Monad.Trans
-import Control.Monad
+import Control.Monad.Trans.Identity
 import Control.Error
 import System.Environment
 import qualified Text.PrettyPrint as P
@@ -113,7 +114,7 @@ main = do
 
 synthesise :: Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
 synthesise inspec flatspec spec solver dostrat = runScript $ do
-    hoistEither $ runST $ evalResourceT $ runEitherT $ do
+    hoistEither $ runST $ runIdentityT $ runEitherT $ do
         m <- lift $ lift $ RefineCommon.setupManager 
         let ts = eqTheorySolver spec m 
         let agame = tslAbsGame spec m ts

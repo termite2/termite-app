@@ -32,6 +32,7 @@ import RefineCommon
 import TermiteGame
 import TSLAbsGame
 import EqSMT
+import BVSMT
 import Store
 import SMTSolver
 import Predicate
@@ -116,7 +117,7 @@ synthesise :: Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.M
 synthesise inspec flatspec spec solver dostrat = runScript $ do
     hoistEither $ runST $ {-evalResourceT $-} runIdentityT $ runEitherT $ do
         m <- lift $ lift $ RefineCommon.setupManager 
-        let ts = eqTheorySolver spec m 
+        let ts = bvSolver spec m 
         let agame = tslAbsGame spec m ts
         sr <- lift $ do (win, ri) <- absRefineLoop m agame ts
                         mkSynthesisRes spec m (if' dostrat (Just win) Nothing, ri)

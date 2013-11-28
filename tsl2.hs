@@ -31,7 +31,6 @@ import AbstractorIFace
 import RefineCommon
 import TermiteGame
 import TSLAbsGame
-import EqSMT
 import BVSMT
 import Store
 import SMTSolver
@@ -39,7 +38,7 @@ import Predicate
 import Resource (evalResourceT)
 import qualified ISpec    as I
 import qualified TranSpec as I
-import Spec2ASL
+--  import Spec2ASL
 
 data TOption = InputTSL String
              | ImportDir String
@@ -103,7 +102,7 @@ main = do
         ispec = if' (confDoSynthesis config) ispecFull ispecDummy
         solver = newSMTLib2Solver ispecFull z3Config
     writeFile "output3.tsl" $ P.render $ pp ispec
-    when (confDoASL config) $ writeFile "output.asl"  $ P.render $ spec2ASL ispec
+    -- when (confDoASL config) $ writeFile "output.asl"  $ P.render $ spec2ASL ispec
 
     (model, absvars, sfact) <- do (res, avars, model, mstrategy) <- synthesise spec spec' ispec solver (confDoSynthesis config)
                                   putStrLn $ "Synthesis returned " ++ show res
@@ -115,12 +114,12 @@ main = do
 
 synthesise :: Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
 synthesise inspec flatspec spec solver dostrat = runScript $ do
-    hoistEither $ runST $ {-evalResourceT $-} runIdentityT $ runEitherT $ do
+    hoistEither $ runST $ evalResourceT $ {-runIdentityT $-} runEitherT $ do
         m <- lift $ lift $ RefineCommon.setupManager 
         let ts = bvSolver spec solver m 
         let agame = tslAbsGame spec m ts
         sr <- lift $ do (win, ri) <- absRefineLoop m agame ts
-                        mkSynthesisRes spec m (if' dostrat (Just win) Nothing, ri)
+                        mkSynthesisRes spec m (if' dostrat win Nothing, ri)
         let model = mkModel inspec flatspec spec solver sr
             strategy = mkStrategy spec sr
 --        lift $ cuddAutodynDisable m

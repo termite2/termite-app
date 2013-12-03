@@ -118,7 +118,7 @@ synthesise inspec flatspec spec solver dostrat = runScript $ do
         m <- lift $ lift $ RefineCommon.setupManager 
         let ts = bvSolver spec solver m 
         let agame = tslAbsGame spec m ts
-        sr <- lift $ do (win, ri) <- absRefineLoop m agame ts
+        sr <- lift $ do (win, ri) <- absRefineLoop m agame ts Nothing --(Just 12)
                         mkSynthesisRes spec m (if' dostrat win Nothing, ri)
         let model = mkModel inspec flatspec spec solver sr
             strategy = mkStrategy spec sr

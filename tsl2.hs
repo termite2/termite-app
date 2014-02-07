@@ -30,6 +30,7 @@ import StrategyView
 import AbstractorIFace
 import RefineCommon
 import TermiteGame
+import RefineUtil
 import TSLAbsGame
 import BVSMT
 import Store
@@ -123,6 +124,11 @@ synthesise inspec flatspec spec solver dostrat = runScript $ do
         let model = mkModel inspec flatspec spec solver sr
             strategy = mkStrategy spec sr
 --        lift $ cuddAutodynDisable m
+        let (svars, sbits, lvars, lbits) = srStats sr
+
+        lift $ lift $ traceST $ "Concrete variables used in the final abstraction: " ++
+                                "state variables: " ++ show svars ++ "(" ++ show sbits ++ "bits), " ++ 
+                                "label variables: "++ show lvars ++ "(" ++ show lbits ++ "bits)"
         return (srWin sr, srAbsVars sr, model, strategy)
 
 qbfSynth :: [AbsVar] -> IO ()

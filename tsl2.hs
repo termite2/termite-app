@@ -43,6 +43,7 @@ import qualified TranSpec as I
 
 data TOption = InputTSL String
              | ImportDir String
+             | BoundRefines String
              | DoSynthesis
              | QBFSynthesis
              | NoBuiltins
@@ -53,11 +54,13 @@ options = [ Option ['i'] []             (ReqArg InputTSL "FILE")       "input TS
           , Option ['I'] []             (ReqArg ImportDir "DIRECTORY") "additional import lookup directory"
           , Option ['s'] []             (NoArg DoSynthesis)            "perform synthesis"
           , Option ['q'] []             (NoArg QBFSynthesis)           "run QBF-based synthesis after normal synthesis"
+          , Option ['r'] []             (ReqArg BoundRefines "n")      "bound the number of refinements"
           , Option []    ["nobuiltins"] (NoArg NoBuiltins)             "do not include TSL2 builtins"
           , Option []    ["asl"]        (NoArg ASLConvert)             "try to convert spec to ASL format"]
 
 data Config = Config { confTSLFile      :: FilePath
                      , confImportDirs   :: [FilePath]
+                     , confBoundRefines :: Maybe Int
                      , confDoSynthesis  :: Bool
                      , confQBFSynthesis :: Bool
                      , confNoBuiltins   :: Bool
@@ -65,19 +68,23 @@ data Config = Config { confTSLFile      :: FilePath
 
 defaultConfig = Config { confTSLFile      = ""
                        , confImportDirs   = []
+                       , confBoundRefines = Nothing
                        , confDoSynthesis  = False
                        , confQBFSynthesis = False
                        , confNoBuiltins   = False
                        , confDoASL        = False}
 
 addOption :: TOption -> Config -> Config
-addOption (InputTSL f)  config = config{ confTSLFile      = f}
-addOption (ImportDir d) config = config{ confImportDirs   = (confImportDirs config) ++ [d]}
-addOption DoSynthesis   config = config{ confDoSynthesis  = True}
-addOption QBFSynthesis  config = config{ confDoSynthesis  = True
-                                       , confQBFSynthesis = True}
-addOption NoBuiltins    config = config{ confNoBuiltins   = True}
-addOption ASLConvert    config = config{ confDoASL        = True}
+addOption (InputTSL f)     config = config{ confTSLFile      = f}
+addOption (ImportDir d)    config = config{ confImportDirs   = (confImportDirs config) ++ [d]}
+addOption (BoundRefines b) config = config{ confBoundRefines = case reads b of
+                                                                    []        -> trace "invalid bound specified" Nothing
+                                                                    ((i,_):_) -> Just i}
+addOption DoSynthesis      config = config{ confDoSynthesis  = True}
+addOption QBFSynthesis     config = config{ confDoSynthesis  = True
+                                          , confQBFSynthesis = True}
+addOption NoBuiltins       config = config{ confNoBuiltins   = True}
+addOption ASLConvert       config = config{ confDoASL        = True}
 
 main = do
     args <- getArgs
@@ -105,7 +112,7 @@ main = do
     writeFile "output3.tsl" $ P.render $ pp ispec
     -- when (confDoASL config) $ writeFile "output.asl"  $ P.render $ spec2ASL ispec
 
-    (model, absvars, sfact) <- do (res, avars, model, mstrategy) <- synthesise spec spec' ispec solver (confDoSynthesis config)
+    (model, absvars, sfact) <- do (res, avars, model, mstrategy) <- synthesise config spec spec' ispec solver (confDoSynthesis config)
                                   putStrLn $ "Synthesis returned " ++ show res
                                   return (model, avars, if' (isJust mstrategy) [(strategyViewNew $ fromJust mstrategy, True)] [])
     when (confQBFSynthesis config) $ qbfSynth $ map ((absvars M.!) . sel1) $ mStateVars model
@@ -113,13 +120,13 @@ main = do
     let sourceViewFactory   = sourceViewNew spec spec' ispec absvars solver
     debugGUI ((sourceViewFactory, True):(if' (confDoSynthesis config) sfact [])) model
 
-synthesise :: Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
-synthesise inspec flatspec spec solver dostrat = runScript $ do
+synthesise :: Config -> Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
+synthesise conf inspec flatspec spec solver dostrat = runScript $ do
     hoistEither $ runST $ evalResourceT $ {-runIdentityT $-} runEitherT $ do
         m <- lift $ lift $ RefineCommon.setupManager 
         let ts = bvSolver spec solver m 
         let agame = tslAbsGame spec m ts
-        sr <- lift $ do (win, ri) <- absRefineLoop m agame ts Nothing --(Just 12)
+        sr <- lift $ do (win, ri) <- absRefineLoop m agame ts (confBoundRefines conf)
                         mkSynthesisRes spec m (if' dostrat win Nothing, ri)
         let model = mkModel inspec flatspec spec solver sr
             strategy = mkStrategy spec sr

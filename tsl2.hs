@@ -22,7 +22,8 @@ import Spec
 import SpecOps
 import DbgGUI
 import DbgTypes
-import Cudd 
+import Cudd
+import CuddExplicitDeref
 import SMTLib2
 import SourceView
 import SourceViewTypes
@@ -112,18 +113,18 @@ main = do
     writeFile "output3.tsl" $ P.render $ pp ispec
     -- when (confDoASL config) $ writeFile "output.asl"  $ P.render $ spec2ASL ispec
 
-    (model, absvars, sfact) <- do (res, avars, model, mstrategy) <- synthesise config spec spec' ispec solver (confDoSynthesis config)
-                                  putStrLn $ "Synthesis returned " ++ show res
-                                  return (model, avars, if' (isJust mstrategy) [(strategyViewNew $ fromJust mstrategy, True)] [])
-    when (confQBFSynthesis config) $ qbfSynth $ map ((absvars M.!) . sel1) $ mStateVars model
-    putStrLn "starting debugger"
-    let sourceViewFactory   = sourceViewNew spec spec' ispec absvars solver
-    debugGUI ((sourceViewFactory, True):(if' (confDoSynthesis config) sfact [])) model
+    withManagerIODefaults $ \m -> do
 
-synthesise :: Config -> Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
-synthesise conf inspec flatspec spec solver dostrat = stToIO $ evalResourceT $ do
-    m <- lift $ RefineCommon.setupManager 
+        (model, absvars, sfact) <- do (res, avars, model, mstrategy) <- synthesise m config spec spec' ispec solver (confDoSynthesis config)
+                                      putStrLn $ "Synthesis returned " ++ show res
+                                      return (model, avars, if' (isJust mstrategy) [(strategyViewNew $ fromJust mstrategy, True)] [])
+        when (confQBFSynthesis config) $ qbfSynth $ map ((absvars M.!) . sel1) $ mStateVars model
+        putStrLn "starting debugger"
+        let sourceViewFactory   = sourceViewNew spec spec' ispec absvars solver
+        debugGUI ((sourceViewFactory, True):(if' (confDoSynthesis config) sfact [])) model
 
+synthesise :: STDdManager RealWorld u -> Config -> Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
+synthesise m conf inspec flatspec spec solver dostrat = stToIO $ evalResourceT $ do
     let ts    = bvSolver spec solver m 
         agame = tslAbsGame spec m ts
 

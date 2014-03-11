@@ -121,26 +121,25 @@ main = do
     debugGUI ((sourceViewFactory, True):(if' (confDoSynthesis config) sfact [])) model
 
 synthesise :: Config -> Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
-synthesise conf inspec flatspec spec solver dostrat = return $ do
-    runST $ evalResourceT $ do
-        m <- lift $ RefineCommon.setupManager 
+synthesise conf inspec flatspec spec solver dostrat = stToIO $ evalResourceT $ do
+    m <- lift $ RefineCommon.setupManager 
 
-        let ts    = bvSolver spec solver m 
-            agame = tslAbsGame spec m ts
+    let ts    = bvSolver spec solver m 
+        agame = tslAbsGame spec m ts
 
-        sr <- do 
-            (win, ri) <- absRefineLoop m agame ts (confBoundRefines conf)
-            mkSynthesisRes spec m (if' dostrat win Nothing, ri)
+    sr <- do 
+        (win, ri) <- absRefineLoop m agame ts (confBoundRefines conf)
+        mkSynthesisRes spec m (if' dostrat win Nothing, ri)
 
-        let model    = mkModel inspec flatspec spec solver sr
-            strategy = mkStrategy spec sr
-            (svars, sbits, lvars, lbits) = srStats sr
+    let model    = mkModel inspec flatspec spec solver sr
+        strategy = mkStrategy spec sr
+        (svars, sbits, lvars, lbits) = srStats sr
 
-        lift $ traceST $ "Concrete variables used in the final abstraction: " ++
-                                "state variables: " ++ show svars ++ "(" ++ show sbits ++ "bits), " ++ 
-                                "label variables: "++ show lvars ++ "(" ++ show lbits ++ "bits)"
+    lift $ traceST $ "Concrete variables used in the final abstraction: " ++
+                            "state variables: " ++ show svars ++ "(" ++ show sbits ++ "bits), " ++ 
+                            "label variables: "++ show lvars ++ "(" ++ show lbits ++ "bits)"
 
-        return (srWin sr, srAbsVars sr, model, strategy)
+    return (srWin sr, srAbsVars sr, model, strategy)
 
 qbfSynth :: [AbsVar] -> IO ()
 qbfSynth avs = do

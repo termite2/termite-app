@@ -121,19 +121,20 @@ main = do
     debugGUI ((sourceViewFactory, True):(if' (confDoSynthesis config) sfact [])) model
 
 synthesise :: Config -> Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
-synthesise conf inspec flatspec spec solver dostrat = runScript $ do
-    hoistEither $ runST $ evalResourceT $ {-runIdentityT $-} runEitherT $ do
-        m <- lift $ lift $ RefineCommon.setupManager 
+synthesise conf inspec flatspec spec solver dostrat = return $ do
+    runST $ evalResourceT $ do
+        m <- lift $ RefineCommon.setupManager 
         let ts = bvSolver spec solver m 
         let agame = tslAbsGame spec m ts
-        sr <- lift $ do (win, ri) <- absRefineLoop m agame ts (confBoundRefines conf)
-                        mkSynthesisRes spec m (if' dostrat win Nothing, ri)
+        sr <- do 
+            (win, ri) <- absRefineLoop m agame ts (confBoundRefines conf)
+            mkSynthesisRes spec m (if' dostrat win Nothing, ri)
         let model = mkModel inspec flatspec spec solver sr
             strategy = mkStrategy spec sr
 --        lift $ cuddAutodynDisable m
         let (svars, sbits, lvars, lbits) = srStats sr
 
-        lift $ lift $ traceST $ "Concrete variables used in the final abstraction: " ++
+        lift $ traceST $ "Concrete variables used in the final abstraction: " ++
                                 "state variables: " ++ show svars ++ "(" ++ show sbits ++ "bits), " ++ 
                                 "label variables: "++ show lvars ++ "(" ++ show lbits ++ "bits)"
         return (srWin sr, srAbsVars sr, model, strategy)

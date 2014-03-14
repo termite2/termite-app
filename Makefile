@@ -12,6 +12,7 @@ GHCINC= ${BDD_PATH} \
 	${TSL2_PATH}/frontend \
 	${TSL2_PATH}/solver \
 	${TSL2_PATH}/internal \
+	${TSL2_PATH}/codegen \
 	${DEBUGGER2_PATH} \
 	${TSL2_PATH}/abstract \
 	${UTIL_PATH} \

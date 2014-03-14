@@ -115,22 +115,21 @@ main = do
 
     withManagerIODefaults $ \m -> do
 
-        (model, absvars, sfact) <- do (res, avars, model, mstrategy) <- synthesise m config spec spec' ispec solver (confDoSynthesis config)
-                                      putStrLn $ "Synthesis returned " ++ show res
-                                      return (model, avars, if' (isJust mstrategy) [(strategyViewNew $ fromJust mstrategy, True)] [])
+        (ri, model, absvars, sfact) <- do (ri, res, avars, model, mstrategy) <- synthesise m config spec spec' ispec solver (confDoSynthesis config)
+                                          putStrLn $ "Synthesis returned " ++ show res
+                                          return (ri, model, avars, if' (isJust mstrategy) [(strategyViewNew $ fromJust mstrategy, True)] [])
         when (confQBFSynthesis config) $ qbfSynth $ map ((absvars M.!) . sel1) $ mStateVars model
         putStrLn "starting debugger"
-        let sourceViewFactory   = sourceViewNew spec spec' ispec absvars solver
+        let sourceViewFactory = sourceViewNew spec spec' ispec absvars solver m ri
         debugGUI ((sourceViewFactory, True):(if' (confDoSynthesis config) sfact [])) model
 
-synthesise :: STDdManager RealWorld u -> Config -> Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
+synthesise :: STDdManager RealWorld u -> Config -> Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (RefineInfo RealWorld u AbsVar AbsVar [[AbsVar]], Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
 synthesise m conf inspec flatspec spec solver dostrat = stToIO $ evalResourceT $ do
     let ts    = bvSolver spec solver m 
         agame = tslAbsGame spec m ts
 
-    sr <- do 
-        (win, ri) <- absRefineLoop m agame ts (confBoundRefines conf)
-        mkSynthesisRes spec m (if' dostrat win Nothing, ri)
+    (win, ri) <- absRefineLoop m agame ts (confBoundRefines conf)
+    sr <- mkSynthesisRes spec m (if' dostrat win Nothing, ri)
 
     let model    = mkModel inspec flatspec spec solver sr
         strategy = mkStrategy spec sr
@@ -140,7 +139,7 @@ synthesise m conf inspec flatspec spec solver dostrat = stToIO $ evalResourceT $
                             "state variables: " ++ show svars ++ "(" ++ show sbits ++ "bits), " ++ 
                             "label variables: "++ show lvars ++ "(" ++ show lbits ++ "bits)"
 
-    return (srWin sr, srAbsVars sr, model, strategy)
+    return (ri, srWin sr, srAbsVars sr, model, strategy)
 
 qbfSynth :: [AbsVar] -> IO ()
 qbfSynth avs = do

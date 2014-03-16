@@ -115,6 +115,8 @@ main = do
 
     withManagerIODefaults $ \m -> do
 
+        stToIO $ setupManager m
+
         (ri, model, absvars, sfact) <- do (ri, res, avars, model, mstrategy) <- synthesise m config spec spec' ispec solver (confDoSynthesis config)
                                           putStrLn $ "Synthesis returned " ++ show res
                                           return (ri, model, avars, if' (isJust mstrategy) [(strategyViewNew $ fromJust mstrategy, True)] [])

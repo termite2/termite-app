@@ -37,7 +37,7 @@ import BVSMT
 import Store
 import SMTSolver
 import Predicate
-import Resource (evalResourceT)
+import Resource
 import qualified ISpec    as I
 import qualified TranSpec as I
 --  import Spec2ASL
@@ -77,7 +77,7 @@ defaultConfig = Config { confTSLFile      = ""
 
 addOption :: TOption -> Config -> Config
 addOption (InputTSL f)     config = config{ confTSLFile      = f}
-addOption (ImportDir d)    config = config{ confImportDirs   = (confImportDirs config) ++ [d]}
+addOption (ImportDir dir)  config = config{ confImportDirs   = (confImportDirs config) ++ [dir]}
 addOption (BoundRefines b) config = config{ confBoundRefines = case reads b of
                                                                     []        -> trace "invalid bound specified" Nothing
                                                                     ((i,_):_) -> Just i}
@@ -117,16 +117,24 @@ main = do
 
         stToIO $ setupManager m
 
-        (ri, model, absvars, sfact) <- do (ri, res, avars, model, mstrategy) <- synthesise m config spec spec' ispec solver (confDoSynthesis config)
-                                          putStrLn $ "Synthesis returned " ++ show res
-                                          return (ri, model, avars, if' (isJust mstrategy) [(strategyViewNew $ fromJust mstrategy, True)] [])
+        (ri, model, absvars, sfact, inuse) <- do ((ri, res, avars, model, mstrategy), inuse) <- synthesise m config spec spec' ispec solver (confDoSynthesis config)
+                                                 putStrLn $ "Synthesis returned " ++ show res
+                                                 putStrLn $ "inuse: " ++ show inuse
+                                                 return (ri, model, avars, if' (isJust mstrategy) [(strategyViewNew $ fromJust mstrategy, True)] [], inuse)
         when (confQBFSynthesis config) $ qbfSynth $ map ((absvars M.!) . sel1) $ mStateVars model
         putStrLn "starting debugger"
-        let sourceViewFactory = sourceViewNew spec spec' ispec absvars solver m ri
+        let sourceViewFactory = sourceViewNew spec spec' ispec absvars solver m ri inuse
         debugGUI ((sourceViewFactory, True):(if' (confDoSynthesis config) sfact [])) model
 
-synthesise :: STDdManager RealWorld u -> Config -> Spec -> Spec -> I.Spec -> SMTSolver -> Bool -> IO (RefineInfo RealWorld u AbsVar AbsVar [[AbsVar]], Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode))
-synthesise m conf inspec flatspec spec solver dostrat = stToIO $ evalResourceT $ do
+synthesise :: STDdManager RealWorld u 
+           -> Config 
+           -> Spec 
+           -> Spec 
+           -> I.Spec 
+           -> SMTSolver 
+           -> Bool 
+           -> IO ((RefineInfo RealWorld u AbsVar AbsVar [[AbsVar]], Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode)), InUse (DDNode RealWorld u))
+synthesise m conf inspec flatspec spec solver dostrat = stToIO $ runResourceT M.empty $ do
     let ts    = bvSolver spec solver m 
         agame = tslAbsGame spec m ts
 

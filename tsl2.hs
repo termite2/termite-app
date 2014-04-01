@@ -134,7 +134,7 @@ synthesise :: STDdManager RealWorld u
            -> SMTSolver 
            -> Bool 
            -> IO ((RefineInfo RealWorld u AbsVar AbsVar [[AbsVar]], Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode)), InUse (DDNode RealWorld u))
-synthesise m conf inspec flatspec spec solver dostrat = stToIO $ runResourceT M.empty $ do
+synthesise m conf inspec flatspec spec solver dostrat = stToIO $ runResource M.empty $ do
     let ts    = bvSolver spec solver m 
         agame = tslAbsGame spec m ts
 

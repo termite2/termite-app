@@ -22,8 +22,8 @@ import Spec
 import SpecOps
 import DbgGUI
 import DbgTypes
-import Cudd
-import CuddExplicitDeref
+import Cudd.Cudd
+import Cudd.Imperative
 import SMTLib2
 import SourceView
 import SourceViewTypes

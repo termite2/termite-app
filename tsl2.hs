@@ -15,31 +15,31 @@ import qualified Text.PrettyPrint as P
 import System.Console.GetOpt
 
 import Util
-import SpecInline
+import Frontend.SpecInline
 import PP
-import Parse
-import Spec
-import SpecOps
-import DbgGUI
-import DbgTypes
+import Frontend.Parse
+import Frontend.Spec
+import Frontend.SpecOps
+import Debug.DbgGUI
+import Debug.DbgTypes
 import Cudd.Cudd
 import Cudd.Imperative
-import SMTLib2
-import SourceView
-import SourceViewTypes
-import StrategyView
-import AbstractorIFace
-import RefineCommon
-import TermiteGame
-import RefineUtil
-import TSLAbsGame
-import BVSMT
-import Store
-import SMTSolver
-import Predicate
-import Resource
-import qualified ISpec    as I
-import qualified TranSpec as I
+import Solver.SMTLib2
+import Debug.SourceView
+import Debug.SourceViewTypes
+import Debug.StrategyView
+import Debug.AbstractorIFace
+import Synthesis.RefineCommon
+import Synthesis.TermiteGame
+import Synthesis.RefineUtil
+import Abstract.TSLAbsGame
+import Solver.BVSMT
+import Solver.Store
+import Solver.SMTSolver
+import Abstract.Predicate
+import Synthesis.Resource
+import qualified Internal.ISpec    as I
+import qualified Internal.TranSpec as I
 --  import Spec2ASL
 
 data TOption = InputTSL String

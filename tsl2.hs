@@ -11,6 +11,7 @@ import Control.Monad.Trans
 import Control.Monad.Trans.Identity
 import Control.Error
 import System.Environment
+import System.Directory
 import qualified Text.PrettyPrint as P
 import System.Console.GetOpt
 
@@ -94,14 +95,15 @@ main = do
                    (flags, [], []) -> return $ foldr addOption defaultConfig flags
                    _ -> fail $ usageInfo ("Usage: " ++ prog ++ " [OPTION...]") options 
     spec <- parseTSL (confTSLFile config) (confImportDirs config) (not $ confNoBuiltins config)
-    writeFile "output.tsl" $ P.render $ pp spec
+    createDirectoryIfMissing False "tmp"
+    writeFile "tmp/output.tsl" $ P.render $ pp spec
     case validateSpec spec of
          Left e  -> fail $ "validation error: " ++ e
          Right _ -> putStrLn "validation successful"
     spec' <- case flatten spec of
                   Left e  -> fail $ "flattening error: " ++ e
                   Right s -> return s
-    writeFile "output2.tsl" $ P.render $ pp spec'
+    writeFile "tmp/output2.tsl" $ P.render $ pp spec'
     case validateSpec spec' of
          Left e  -> fail $ "flattened spec validation error: " ++ e
          Right _ -> putStrLn "flattened spec validation successful"
@@ -110,7 +112,7 @@ main = do
                                                                     , I.tsUTran = []}}
         ispec = if' (confDoSynthesis config) ispecFull ispecDummy
         solver = newSMTLib2Solver ispecFull z3Config
-    writeFile "output3.tsl" $ P.render $ pp ispec
+    writeFile "tmp/output3.tsl" $ P.render $ pp ispec
     -- when (confDoASL config) $ writeFile "output.asl"  $ P.render $ spec2ASL ispec
 
     withManagerIODefaults $ \m -> do

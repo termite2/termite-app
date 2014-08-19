@@ -27,9 +27,9 @@ LIBS=${CUDDLIBS} ${CUDDHLIB}
 LIBPATHS= ${CUDDLIBPATHS} \
 	 ${CUDD_HASKELL_PATH}
 
-TARGET=tsl2.hs
+TARGET=termite.hs
 CLIBS=${LIBS} stdc++
-GHC_FLAGS+=-o $(ROOT)/bin/tsl2 -Wall -fno-warn-incomplete-patterns -fno-warn-missing-signatures  #-fforce-recomp # -prof -auto-all -rtsopts # -fforce-recomp 
+GHC_FLAGS+=-o $(ROOT)/bin/termite -Wall -fno-warn-incomplete-patterns -fno-warn-missing-signatures  #-fforce-recomp # -prof -auto-all -rtsopts # -fforce-recomp 
 
 CABAL_PACKAGES= 
 
@@ -37,7 +37,7 @@ EXTRA_LIB_DIRS=
 
 cabal: 
 	cabal-dev install $(CABAL_PACKAGES) $(EXTRA_LIB_DIRS)
-	cp cabal-dev/bin/tsl2 $(ROOT)/bin/tsl2
+	cp cabal-dev/bin/termite $(ROOT)/bin/termite
 
 default:
 	ghc --make -c -fcontext-stack=64 -O2 ${GHC_FLAGS} ${GHCINC:%=-i%} ${TARGET} ${LIBPATHS:%=-L%} ${LIBS:%=-l%}

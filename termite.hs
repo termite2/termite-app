@@ -31,7 +31,8 @@ import Debug.SourceViewTypes
 import Debug.StrategyView
 import Debug.AbstractorIFace
 import Synthesis.RefineCommon
-import Synthesis.TermiteGame
+import Synthesis.TermiteGame hiding (Config)
+import qualified Synthesis.TermiteGame as S
 import Synthesis.RefineUtil
 import Abstract.TSLAbsGame
 import Solver.BVSMT
@@ -140,7 +141,7 @@ synthesise m conf inspec flatspec spec solver dostrat = stToIO $ runResource M.e
     let ts    = bvSolver spec solver m 
         agame = tslAbsGame spec m ts
 
-    (win, ri) <- absRefineLoop m agame ts (confBoundRefines conf)
+    (win, ri) <- absRefineLoop (S.Config False False False False False False False) m agame ts (confBoundRefines conf)
     sr <- mkSynthesisRes spec m (if' dostrat win Nothing, ri)
 
     let model    = mkModel inspec flatspec spec solver sr

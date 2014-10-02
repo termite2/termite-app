@@ -111,7 +111,7 @@ main = do
     let numactions = (if' confDoSynthesis 1 0) + (if' confDoCompile 1 0) + (if' (isJust confDoCGen) 1 0)
     when (numactions /= 1) $ fail "Exactly one of -c, -s and -g options must be given"
 
-    (modules, spec) <- parseTSL confTSLFile confImportDirs (not confNoBuiltins)
+    (modules, spec) <- parseTSL confTSLFile confImportDirs (not confNoBuiltins) (isNothing confDoCGen)
     createDirectoryIfMissing False "tmp"
     writeFile "tmp/output.tsl" $ P.render $ pp spec
     case validateSpec spec of

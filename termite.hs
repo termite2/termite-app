@@ -14,6 +14,7 @@ import System.Environment
 import System.Directory
 import qualified Text.PrettyPrint as P
 import System.Console.GetOpt
+import Text.PrettyPrint
 
 import Util
 import Frontend.SpecInline
@@ -21,6 +22,7 @@ import PP
 import Frontend.Parse
 import Frontend.Spec
 import Frontend.SpecOps
+import Frontend.Grammar
 import Debug.DbgGUI
 import Debug.DbgTypes
 import Cudd.Cudd
@@ -43,12 +45,14 @@ import Synthesis.Resource
 import qualified Internal.ISpec    as I
 import qualified Internal.TranSpec as I
 --  import Spec2ASL
+import TSL2C.TSL2C
 
 data TOption = InputTSL String
              | ImportDir String
              | BoundRefines String
              | DoSynthesis
              | DoCompile
+             | DoCGen String
              | NoBuiltins
              | ASLConvert
              | Verbose
@@ -58,6 +62,7 @@ options = [ Option ['i'] []             (ReqArg InputTSL "FILE")       "input TS
           , Option ['I'] []             (ReqArg ImportDir "DIRECTORY") "additional import lookup directory"
           , Option ['s'] []             (NoArg DoSynthesis)            "compile and synthesise"
           , Option ['c'] []             (NoArg DoCompile)              "compile only"
+          , Option ['g'] []             (ReqArg DoCGen "FILE")         "convert selected TSL file to C"
           , Option ['r'] []             (ReqArg BoundRefines "n")      "bound the number of refinements"
           , Option ['v'] ["verbose"]    (NoArg Verbose)                "print verbose debug output"
           , Option []    ["nobuiltins"] (NoArg NoBuiltins)             "do not include TSL2 builtins"
@@ -69,6 +74,7 @@ data Config = Config { confTSLFile      :: FilePath
                      , confBoundRefines :: Maybe Int
                      , confDoSynthesis  :: Bool
                      , confDoCompile    :: Bool
+                     , confDoCGen       :: Maybe String
                      , confNoBuiltins   :: Bool
                      , confDoASL        :: Bool
                      , confVerbose      :: Bool }
@@ -78,6 +84,7 @@ defaultConfig = Config { confTSLFile      = ""
                        , confBoundRefines = Nothing
                        , confDoSynthesis  = False
                        , confDoCompile    = False
+                       , confDoCGen       = Nothing
                        , confNoBuiltins   = False
                        , confDoASL        = False
                        , confVerbose      = False}
@@ -90,6 +97,7 @@ addOption (BoundRefines b) config = config{ confBoundRefines = case reads b of
                                                                     ((i,_):_) -> Just i}
 addOption DoSynthesis      config = config{ confDoSynthesis  = True}
 addOption DoCompile        config = config{ confDoCompile    = True}
+addOption (DoCGen f)       config = config{ confDoCGen       = Just f}
 addOption NoBuiltins       config = config{ confNoBuiltins   = True}
 addOption ASLConvert       config = config{ confDoASL        = True}
 addOption Verbose          config = config{ confVerbose      = True}
@@ -100,15 +108,21 @@ main = do
     config@Config{..} <- case getOpt Permute options args of
                               (flags, [], []) -> return $ foldr addOption defaultConfig flags
                               _ -> fail $ usageInfo ("Usage: " ++ prog ++ " [OPTION...]") options 
-    when (not confDoSynthesis && not confDoCompile) $ fail "One of -c and -s options must be given"
-    when (confDoSynthesis  &&  confDoCompile) $ fail "Conflicting options: -c and -s"
+    let numactions = (if' confDoSynthesis 1 0) + (if' confDoCompile 1 0) + (if' (isJust confDoCGen) 1 0)
+    when (numactions /= 1) $ fail "Exactly one of -c, -s and -g options must be given"
 
-    spec <- parseTSL confTSLFile confImportDirs (not confNoBuiltins)
+    (modules, spec) <- parseTSL confTSLFile confImportDirs (not confNoBuiltins)
     createDirectoryIfMissing False "tmp"
     writeFile "tmp/output.tsl" $ P.render $ pp spec
     case validateSpec spec of
          Left e  -> fail $ "validation error: " ++ e
          Right _ -> return ()
+    case confDoCGen of
+         Nothing -> compileAndSynthesise config spec
+         Just f  -> genCCode (modules, spec) f
+
+compileAndSynthesise :: Config -> Spec -> IO ()
+compileAndSynthesise config@Config{..} spec = do
     spec' <- case flatten spec of
                   Left e  -> fail $ "flattening error: " ++ e
                   Right s -> return s
@@ -135,6 +149,14 @@ main = do
         putStrLn "starting debugger"
         let sourceViewFactory = sourceViewNew spec spec' ispec absvars solver m ri inuse
         debugGUI ((sourceViewFactory, True):(if' confDoSynthesis sfact [])) model
+
+genCCode :: (M.Map FilePath [SpecItem], Spec) -> String -> IO ()
+genCCode (modules, spec) f = 
+    case M.lookup f modules of
+         Nothing    -> fail $ "File " ++ f ++ " not found in the imput specification"
+         Just items -> let ?spec = spec in 
+                       let ccode = vcat $ map (($$ text "") . specItem2C) items in
+                       putStr $ render ccode
 
 synthesise :: STDdManager RealWorld u 
            -> Config 

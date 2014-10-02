@@ -19,6 +19,6 @@ executable termite
   main-is:             termite.hs
   -- other-modules:       
   -- other-extensions:    
-  build-depends:       base >=4.6 && <4.8, directory, tsl2, synthesis, debug2, cudd, util, pretty, errors, transformers, mtl, tuple, containers
+  build-depends:       base >=4.6 && <4.8, directory, tsl2, synthesis, debug2, cudd, util, pretty, errors, transformers, mtl, tuple, containers, filepath
   -- hs-source-dirs:      
   default-language:    Haskell2010

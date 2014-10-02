@@ -5,6 +5,7 @@ module Main where
 import qualified Data.Map as M
 import Data.Tuple.Select
 import Data.Maybe
+import Data.Char
 import Control.Monad
 import Control.Monad.ST
 import Control.Monad.Trans
@@ -15,8 +16,10 @@ import System.Directory
 import qualified Text.PrettyPrint as P
 import System.Console.GetOpt
 import Text.PrettyPrint
+import System.FilePath.Posix
 
 import Util
+import TSLUtil
 import Frontend.SpecInline
 import PP
 import Frontend.Parse
@@ -53,6 +56,7 @@ data TOption = InputTSL String
              | DoSynthesis
              | DoCompile
              | DoCGen String
+             | DoHGen String
              | NoBuiltins
              | ASLConvert
              | Verbose
@@ -63,6 +67,7 @@ options = [ Option ['i'] []             (ReqArg InputTSL "FILE")       "input TS
           , Option ['s'] []             (NoArg DoSynthesis)            "compile and synthesise"
           , Option ['c'] []             (NoArg DoCompile)              "compile only"
           , Option ['g'] []             (ReqArg DoCGen "FILE")         "convert selected TSL file to C"
+          , Option ['h'] []             (ReqArg DoHGen "FILE")         "generate C header for selected TSL file"
           , Option ['r'] []             (ReqArg BoundRefines "n")      "bound the number of refinements"
           , Option ['v'] ["verbose"]    (NoArg Verbose)                "print verbose debug output"
           , Option []    ["nobuiltins"] (NoArg NoBuiltins)             "do not include TSL2 builtins"
@@ -75,6 +80,7 @@ data Config = Config { confTSLFile      :: FilePath
                      , confDoSynthesis  :: Bool
                      , confDoCompile    :: Bool
                      , confDoCGen       :: Maybe String
+                     , confDoHGen       :: Maybe String
                      , confNoBuiltins   :: Bool
                      , confDoASL        :: Bool
                      , confVerbose      :: Bool }
@@ -85,6 +91,7 @@ defaultConfig = Config { confTSLFile      = ""
                        , confDoSynthesis  = False
                        , confDoCompile    = False
                        , confDoCGen       = Nothing
+                       , confDoHGen       = Nothing
                        , confNoBuiltins   = False
                        , confDoASL        = False
                        , confVerbose      = False}
@@ -98,6 +105,7 @@ addOption (BoundRefines b) config = config{ confBoundRefines = case reads b of
 addOption DoSynthesis      config = config{ confDoSynthesis  = True}
 addOption DoCompile        config = config{ confDoCompile    = True}
 addOption (DoCGen f)       config = config{ confDoCGen       = Just f}
+addOption (DoHGen f)       config = config{ confDoHGen       = Just f}
 addOption NoBuiltins       config = config{ confNoBuiltins   = True}
 addOption ASLConvert       config = config{ confDoASL        = True}
 addOption Verbose          config = config{ confVerbose      = True}
@@ -108,18 +116,19 @@ main = do
     config@Config{..} <- case getOpt Permute options args of
                               (flags, [], []) -> return $ foldr addOption defaultConfig flags
                               _ -> fail $ usageInfo ("Usage: " ++ prog ++ " [OPTION...]") options 
-    let numactions = (if' confDoSynthesis 1 0) + (if' confDoCompile 1 0) + (if' (isJust confDoCGen) 1 0)
-    when (numactions /= 1) $ fail "Exactly one of -c, -s and -g options must be given"
+    let numactions = (if' confDoSynthesis 1 0) + (if' confDoCompile 1 0) + (if' (isJust confDoCGen) 1 0) + (if' (isJust confDoHGen) 1 0)
+    when (numactions /= 1) $ fail "Exactly one of -c, -s, -g and -h options must be given"
 
-    (modules, spec) <- parseTSL confTSLFile confImportDirs (not confNoBuiltins) (isNothing confDoCGen)
+    (modules, spec) <- parseTSL confTSLFile confImportDirs (not confNoBuiltins) (isNothing confDoCGen && isNothing confDoHGen)
     createDirectoryIfMissing False "tmp"
     writeFile "tmp/output.tsl" $ P.render $ pp spec
     case validateSpec spec of
          Left e  -> fail $ "validation error: " ++ e
          Right _ -> return ()
-    case confDoCGen of
-         Nothing -> compileAndSynthesise config spec
-         Just f  -> genCCode (modules, spec) f
+    case (confDoCGen, confDoHGen) of
+         (Nothing, Nothing) -> compileAndSynthesise config spec
+         (Just f, _)        -> genCCode (modules, spec) f False
+         (_, Just f)        -> genCCode (modules, spec) f True
 
 compileAndSynthesise :: Config -> Spec -> IO ()
 compileAndSynthesise config@Config{..} spec = do
@@ -150,13 +159,22 @@ compileAndSynthesise config@Config{..} spec = do
         let sourceViewFactory = sourceViewNew spec spec' ispec absvars solver m ri inuse
         debugGUI ((sourceViewFactory, True):(if' confDoSynthesis sfact [])) model
 
-genCCode :: (M.Map FilePath [SpecItem], Spec) -> String -> IO ()
-genCCode (modules, spec) f = 
+genCCode :: (M.Map FilePath [SpecItem], Spec) -> String -> Bool -> IO ()
+genCCode (modules, spec) f headeronly = 
     case M.lookup f modules of
          Nothing    -> fail $ "File " ++ f ++ " not found in the imput specification"
          Just items -> let ?spec = spec in 
-                       let ccode = vcat $ map (($$ text "") . specItem2C) items in
-                       putStr $ render ccode
+                       let hname = dropExtensions f ++ ".h"
+                           cname = dropExtensions f ++ ".c"
+                           hdef = map toUpper $ sanitize $ "_" ++ hname
+                           hcode = text ("#ifndef " ++ hdef)
+                                $$ text ("#define " ++ hdef)
+                                $$ (module2C True items)
+                                $$ text ("#endif /* " ++ hdef ++ " */")
+                           ccode = text ("#include <" ++ hname ++ ">") 
+                                $$ (module2C False items) in
+                       do writeFile hname (render hcode)
+                          when (not headeronly) $ writeFile cname (render ccode)
 
 synthesise :: STDdManager RealWorld u 
            -> Config 

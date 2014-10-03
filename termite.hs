@@ -169,6 +169,7 @@ genCCode (modules, spec) f headeronly =
                            hdef = map toUpper $ sanitize $ "_" ++ hname
                            hcode = text ("#ifndef " ++ hdef)
                                 $$ text ("#define " ++ hdef)
+                                $$ text ("#include <termite.h>") 
                                 $$ (module2C True items)
                                 $$ text ("#endif /* " ++ hdef ++ " */")
                            ccode = text ("#include <" ++ hname ++ ">") 

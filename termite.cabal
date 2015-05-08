@@ -17,6 +17,7 @@ cabal-version:       >=1.10
 
 executable termite
   main-is:             termite.hs
+  ghc-options: -O2 -prof -prof -auto-all -rtsopts 
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.8, directory, tsl2, synthesis, debug2, cudd, util, pretty, errors, transformers, mtl, tuple, containers, filepath

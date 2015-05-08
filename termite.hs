@@ -29,7 +29,7 @@ import Frontend.Grammar
 import Debug.DbgGUI
 import Debug.DbgTypes
 import Cudd.Cudd
-import Cudd.Imperative
+import qualified Cudd.Imperative as CI
 import Solver.SMTLib2
 import Debug.SourceView
 import Debug.SourceViewTypes
@@ -125,7 +125,7 @@ main = do
     let numactions = (if' confDoSynthesis 1 0) + (if' confDoCompile 1 0) + (if' confDoCGen 1 0) + (if' confDoHGen 1 0) + (if' confDoBoogie 1 0)
     when (numactions /= 1) $ fail "Exactly one of -c, -s, -g, -h and -b options must be given"
 
-    (modules, spec) <- parseTSL confTSLFile confImportDirs (not confNoBuiltins) (confDoCGen == False && confDoHGen == False)
+    (modules, spec) <- parseTSL confTSLFile confImportDirs (not confDoBoogie && not confNoBuiltins) (confDoCGen == False && confDoHGen == False  && confDoBoogie == False)
     createDirectoryIfMissing False "tmp"
     writeFile "tmp/output.tsl" $ P.render $ pp spec
     case validateSpec spec of
@@ -145,19 +145,20 @@ compileAndSynthesise config@Config{..} spec = do
     case validateSpec spec' of
          Left e  -> fail $ "flattened spec validation error: " ++ e
          Right _ -> return ()
-    let ispecFull = spec2Internal spec'
-        ispecDummy = ispecFull {I.specTran = (I.specTran ispecFull) { I.tsCTran = []
-                                                                    , I.tsUTran = []}}
-        ispec = if' confDoSynthesis ispecFull ispecDummy
-        solver = newSMTLib2Solver ispecFull z3Config
-    writeFile "tmp/output3.tsl" $ P.render $ pp ispec
     -- when (confDoASL config) $ writeFile "output.asl"  $ P.render $ spec2ASL ispec
 
     if' confDoBoogie
-        (case spec2Boogie ispec of
-              Left e  -> fail e
-              Right d -> writeFile (dropExtensions confTSLFile ++ ".bpl") (render d))
-        (withManagerIODefaults $ \m -> do
+        (do let ispec = specXducers2Internal spec'
+            case spec2Boogie ispec of
+                 Left e  -> fail e
+                 Right d -> writeFile (dropExtensions confTSLFile ++ ".bpl") (render d))
+        (CI.withManagerIODefaults $ \m -> do
+            let ispecFull = spec2Internal spec'
+                ispecDummy = ispecFull {I.specTran = (I.specTran ispecFull) { I.tsCTran = []
+                                                                            , I.tsUTran = []}}
+                ispec = if' confDoSynthesis ispecFull ispecDummy
+                solver = newSMTLib2Solver ispecFull z3Config
+            writeFile "tmp/output3.tsl" $ P.render $ pp ispec
             stToIO $ setupManager m
             (ri, model, absvars, sfact, inuse) <- do ((ri, res, avars, model, mstrategy), inuse) <- synthesise m config spec spec' ispec solver confDoSynthesis
                                                      putStrLn $ "Synthesis returned " ++ show res
@@ -185,14 +186,14 @@ genCCode (modules, spec) f headeronly =
                        do writeFile hname (render hcode)
                           when (not headeronly) $ writeFile cname (render ccode)
 
-synthesise :: STDdManager RealWorld u 
+synthesise :: CI.DDManager RealWorld u 
            -> Config 
            -> Spec 
            -> Spec 
            -> I.Spec 
            -> SMTSolver 
            -> Bool 
-           -> IO ((RefineInfo RealWorld u AbsVar AbsVar [[AbsVar]], Maybe Bool, M.Map String AbsVar, Model DdManager DdNode Store SVStore, Maybe (Strategy DdNode)), InUse (DDNode RealWorld u))
+           -> IO ((RefineInfo RealWorld u AbsVar AbsVar [[AbsVar]], Maybe Bool, M.Map String AbsVar, Model DDManager DDNode Store SVStore, Maybe (Strategy DDNode)), InUse (CI.DDNode RealWorld u))
 synthesise m Config{..} inspec flatspec spec solver dostrat = stToIO $ runResource M.empty $ do
     let ts    = bvSolver spec solver m 
         agame = tslAbsGame spec m ts
